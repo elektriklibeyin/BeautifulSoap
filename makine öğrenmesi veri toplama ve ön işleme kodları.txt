@@ -1,0 +1,243 @@
+////////////////////////////////////////////////KISIM:1 VERİ ÇEKME\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+#Gerekli Kütüphanelerimizi ekliyoruz
+
+import pandas as pd
+from bs4 import BeautifulSoup
+import requests
+
+#User_Agent'imizi ekliyoruz
+
+head_param ={ "User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36"  }
+
+#gitmek istediğimiz adrese istek atıyoruz, user-Agent'imizi belirterek...
+#aldığımız isteği BeautifulSoap ile parçalamak istediğimizi söylüyoruz
+#Html parser ile parçalayıp soup'un içine gönderiyoruz
+
+r=requests.get("https://www.sahibinden.com/otomobil/bolu?pagingOffset=20&pagingSize=50",headers=head_param)
+soup = BeautifulSoup(r.content,"html.parser")
+
+#linkine istek attığımız sayfadaki tbody'nin adı ile verileri alıp değişkene atıyoruz
+
+araclar=soup.find_all("tbody",attrs={"class":"searchResultsRowClass"})
+
+#araclar değişkenimizin içinde dolanıp ilan linklerini buluyoruz, 
+#bulunan linklerin başı eksik olduğu için ekleme yapıyoruz
+#linklere istek atıp r_arac değişkenine atıyoruz
+#BeautifulSoap - lxml ile parçalıyoruz
+#ilan detaylarını web sayfasındaki <ul> class'ının adı ile içinden çekiyoruz
+#<ul> içindeki tüm <li> lerin <span> larını, yani aradığımız bilgileri çekiyoruz
+#verimizin transpozunu alıp, csv dosyasına aktarıyoruz
+
+for arac in araclar:
+    arac2 = arac.find_all("tr", attrs={"class":"searchResultsItem"})
+    for arac3 in arac2:
+        try:
+            arac_link = arac3.find("a").get("href")
+        except:
+            pass
+        
+        link_basi = "https://www.sahibinden.com"
+        link = link_basi+arac_link
+        print(link)
+                
+        r_arac=requests.get(link, headers=head_param)
+        arac_soup = BeautifulSoup(r_arac.content, "lxml")
+        
+        detaylar = arac_soup.find_all("ul", attrs={"class":"classifiedInfoList"})
+        
+        for i in detaylar:
+            li=i.find_all("li")
+            liste = []
+            for a in li:
+                try:
+                    ozellikler = a.find("span").text
+                    liste.append(ozellikler)
+                except:
+                    pass
+        
+            df_liste=pd.DataFrame(liste).T
+            df_liste.to_csv(r"sahibinden_arabaverileri.csv", encoding="utf-8",index=False,mode="a")
+    
+        
+#csv dosyamızı okuyoruz, satırlar arasında sayılar olduğunu görüyoruz   
+ 
+pd.read_csv("sahibinden_arabaverileri.csv")  
+
+df_dizi = pd.read_csv("sahibinden_arabaverileri.csv")     
+
+#verisetimizdeki gereksiz satırlardan bir while döngüsü kurarak kurtuluyoruz   
+
+i = 1
+while i<=1206:
+    df_dizi.drop(i,inplace = True)
+    i=i+2 
+
+#verisetindeki  satır numaralarını tekrar düzenliyoruz
+
+df_dizi=df_dizi.reset_index()
+df_dizi.drop("index", axis=1, inplace=True)
+
+#verilerimizi excel dosyası olarak kaydediyoruz.
+
+df_dizi.to_excel("sahibinden_arabaverileri.xlsx")
+
+
+/////////////////////////////////////KISIM:2 VERİLERİ DÜZENLEME\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+#Gerekli kütüphanemizi ekliyoruz
+
+import pandas as pd
+
+#verisetimizi okuyoruz
+
+df = pd.read_excel("sahibinden_arabaverileri.xlsx")
+df.drop("Unnamed: 0",axis=1, inplace=True)
+df.head()
+            
+#sütun Adlarını düzenliyoruz
+
+df_2=df.rename(columns={"0":"ilan_id",
+                        "1":"ilan_tarihi",
+                        "2":"marka",
+                        "3":"seri",
+                        "4":"model",
+                        "5":"yıl",
+                        "6":"yakıt",
+                        "7":"vites",
+                        "8":"KM",
+                        "9":"kasatipi",
+                        "10":"motor_gücü",
+                        "11":"motor_hacmi",
+                        "12":"çekiş",
+                        "13":"renk",
+                        "14":"garanti",
+                        "15":"plaka_uyruk",
+                        "16":"kimden",
+                        "17":"görüntülü_arama_ile_görülebilir",
+                        "18":"takas",
+                        "19":"durumu"})
+
+df_2.head()
+
+df_2.columns
+
+#gereksiz bulduğum için ilan_id,ilan_tarihi,görüntülü_arama sütunlarını kaldırdım
+#ayrıca çok fazla çeşitte model ve seri olduğunu göz önünde bulundurarak, sadece markanın yeterli olacağını düşündüm
+#model ve seri sütunlarınıda sildim
+
+df_2.drop('ilan_id',axis=1, inplace=True)
+df_2.drop("ilan_tarihi",axis=1, inplace=True)
+df_2.drop("seri",axis=1, inplace=True)
+df_2.drop("model",axis=1, inplace=True)
+df_2.drop('görüntülü_arama_ile_görülebilir',axis=1, inplace=True)
+
+df_2.head()
+
+#verisetindeki "\n\t" bulunan satırlarda temizleme yaptım, 'hp' ve 'cc' leri kaldırdım, boşlukları sildim
+
+df_2["yakıt"]=df_2.yakıt.str[18:]
+df_2["vites"]=df_2.vites.str[18:]
+df_2["kasatipi"]=df_2.kasatipi.str[18:]
+df_2["motor_gücü"]=df_2.motor_gücü.str[18:-3]
+df_2["motor_hacmi"]=df_2.motor_hacmi.str[18:-3]
+df_2["çekiş"]=df_2.çekiş.str[18:]
+df_2["renk"]=df_2.renk.str[18:]
+df_2["garanti"]=df_2.garanti.str[18:]
+df_2["plaka_uyruk"]=df_2.plaka_uyruk.str[18:]
+df_2["kimden"]=df_2.kimden.str[18:]
+df_2["takas"]=df_2.takas.str[21:-18]
+df_2["durumu"]=df_2.durumu.str[13:-14]
+
+df_2.head()
+
+#verisetinde yaptığımız metinsel düzenlemelerde tamamlanınca tekrar excel dosyası olarak kaydedip son aşamaya geçiyoruz.
+
+df_2.to_excel("sahibinden_arabaverileri2.xlsx")
+
+#son aşamada kategorik ifadelerimize etiketleme işlemleri yapıcaz
+
+
+//////////////////////////////////////////KISIM:3 ETİKETLEME İŞLEMLERİ\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+#gerekli kütüphaneyi ekliyoruz
+
+import pandas as pd
+
+#verisetimizi excel dosyamızdan çekiyoruz
+
+df = pd.read_excel("sahibinden_arabaverileri2.xlsx")
+df.drop("Unnamed: 0", axis=1, inplace=True)
+df_2 = df.copy()
+df_3 = df.copy()
+
+df_2
+
+df_2.columns
+
+#etiketleme işlemi için sklearn kütüphanesinden OneHotEncoder ve LabelEncoder'i kullanıyorum
+
+from sklearn import preprocessing
+le = preprocessing.LabelEncoder()
+onehotencoder = preprocessing.OneHotEncoder()
+
+#get_dummies fonksiyonu ile "çekiş,yakıt,vites,kasatipi,kimden,durumu" satırlarının özniteliklerini OneHotEncoder yöntemi ile ikili değerlere dönüştürücez
+
+df_2['çekiş']=pd.Categorical(df['çekiş'])
+dfDummies = pd.get_dummies(df_2['çekiş'], prefix='')
+df_2.drop("çekiş",axis=1, inplace=True)
+
+df_2['yakıt']=pd.Categorical(df['yakıt'])
+dfDummies2 = pd.get_dummies(df_2['yakıt'], prefix='')
+df_2.drop("yakıt",axis=1, inplace=True)
+
+df_2['vites']=pd.Categorical(df['vites'])
+dfDummies3 = pd.get_dummies(df_2['vites'], prefix='')
+df_2.drop("vites",axis=1, inplace=True)
+
+df_2['plaka_uyruk']=pd.Categorical(df['plaka_uyruk'])
+dfDummies4 = pd.get_dummies(df_2['plaka_uyruk'], prefix='')
+df_2.drop("plaka_uyruk",axis=1, inplace=True)
+
+df_2['kasatipi']=pd.Categorical(df['kasatipi'])
+dfDummies5 = pd.get_dummies(df_2['kasatipi'], prefix='')
+df_2.drop("kasatipi",axis=1, inplace=True)
+
+df_2['kimden']=pd.Categorical(df['kimden'])
+dfDummies6 = pd.get_dummies(df_2['kimden'], prefix='')
+df_2.drop("kimden",axis=1, inplace=True)
+
+df_2['durumu']=pd.Categorical(df['durumu'])
+dfDummies7 = pd.get_dummies(df_2['durumu'], prefix='')
+df_2.drop("durumu",axis=1, inplace=True)
+
+df_3 =pd.concat([df_2, dfDummies,dfDummies2,dfDummies3,dfDummies4,dfDummies5,dfDummies6,dfDummies7], axis=1)
+
+#marka ve renk sütunlarında çok fazla seçenek olduğu için bu sutunları fit_transform fonksiyonu ile yani LabelEncoder yöntemi ile etiketliyorum
+#le.classes_ fonksiyonu ile etiketlediğimiz verilerin neler olduğuna bakabiliriz.
+
+df_3["marka"] = le.fit_transform(df_2.marka)
+le.classes_
+
+df_3["renk"] = le.fit_transform(df_2.renk)
+le.classes_
+
+df_3
+
+#takas ve garanti sütunlarında iki seçenek var, ya True yada False.
+#bu sütunlarıda loc fonksiyonu ile sayısal verilere çevirdim
+
+df_3.loc[df_2.takas=='Evet',"takas"] = 1
+df_3.loc[df_2.takas=='Hayır',"takas"] = 0
+df_3.loc[df_2.garanti=='Evet',"garanti"] = 1
+df_3.loc[df_2.garanti=='Hayır',"garanti"] = 0
+
+df_3
+
+#verileri excel dosyasına atıyoruz ve ön_işleme işlemlerini burda bitirmiş oluyoruz.
+
+df_3.to_excel("sahibinden_arabaverileri3.xlsx")
+
+
+
+
+
+
